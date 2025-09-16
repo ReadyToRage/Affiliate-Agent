@@ -9,6 +9,12 @@ import { z } from "zod";
 
 import { sharedPostgresStorage } from "./storage";
 import { inngest, inngestServe } from "./inngest";
+import { affiliateOSAgent } from "./agents/affiliateOSAgent";
+import { productDiscoveryTool } from "./tools/productDiscoveryTool";
+import { contentGenerationTool } from "./tools/contentGenerationTool";
+import { linkManagementTool } from "./tools/linkManagementTool";
+import { analyticsSimulationTool } from "./tools/analyticsSimulationTool";
+import { alertsTool } from "./tools/alertsTool";
 
 class ProductionPinoLogger extends MastraLogger {
   protected logger: pino.Logger;
@@ -53,13 +59,21 @@ class ProductionPinoLogger extends MastraLogger {
 
 export const mastra = new Mastra({
   storage: sharedPostgresStorage,
-  agents: {},
+  agents: { 
+    affiliateOSAgent 
+  },
   workflows: {},
   mcpServers: {
     allTools: new MCPServer({
       name: "allTools",
       version: "1.0.0",
-      tools: {},
+      tools: {
+        productDiscoveryTool,
+        contentGenerationTool,
+        linkManagementTool,
+        analyticsSimulationTool,
+        alertsTool,
+      },
     }),
   },
   bundler: {
@@ -121,6 +135,48 @@ export const mastra = new Mastra({
         //    - Handle workflow state persistence and real-time updates
         // 3. Establishing a publish-subscribe system for real-time monitoring
         //    through the workflow:${workflowId}:${runId} channel
+      },
+      // Custom API route for AffiliateOS agent using legacy generate handler
+      {
+        path: "/api/agents/affiliateOSAgent/generate",
+        method: "POST",
+        handler: async (c) => {
+          const mastra = c.get("mastra");
+          const logger = mastra?.getLogger();
+          
+          try {
+            const body = await c.req.json();
+            logger?.info('📝 [AffiliateOS Agent] Generate request received', { 
+              method: c.req.method, 
+              path: c.req.path,
+              hasMessages: !!body.messages,
+              messagesCount: body.messages?.length || 0,
+              hasResourceId: !!body.resourceId,
+              hasThreadId: !!body.threadId
+            });
+
+            // Use legacy generate handler to avoid deprecation issues
+            const response = await affiliateOSAgent.generateLegacy(
+              body.messages || [],
+              {
+                resourceId: body.resourceId || "bot",
+                threadId: body.threadId || `telegram/default-${Date.now()}`,
+                maxSteps: body.maxSteps || 5,
+                ...body.options
+              }
+            );
+
+            logger?.info('✅ [AffiliateOS Agent] Generate response completed', {
+              hasText: !!response.text,
+              textLength: response.text?.length || 0
+            });
+
+            return c.json({ text: response.text });
+          } catch (error) {
+            logger?.error('❌ [AffiliateOS Agent] Generate error', { error });
+            return c.json({ error: "Failed to generate response" }, 500);
+          }
+        },
       },
     ],
   },
