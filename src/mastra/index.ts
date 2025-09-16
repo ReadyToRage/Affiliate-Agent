@@ -15,6 +15,7 @@ import { contentGenerationTool } from "./tools/contentGenerationTool";
 import { linkManagementTool } from "./tools/linkManagementTool";
 import { analyticsSimulationTool } from "./tools/analyticsSimulationTool";
 import { alertsTool } from "./tools/alertsTool";
+import { telegramChatbotWorkflow } from "./workflows/telegramChatbotWorkflow";
 
 class ProductionPinoLogger extends MastraLogger {
   protected logger: pino.Logger;
@@ -62,7 +63,9 @@ export const mastra = new Mastra({
   agents: { 
     affiliateOSAgent 
   },
-  workflows: {},
+  workflows: { 
+    telegramChatbotWorkflow 
+  },
   mcpServers: {
     allTools: new MCPServer({
       name: "allTools",
