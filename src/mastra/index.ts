@@ -16,6 +16,7 @@ import { linkManagementTool } from "./tools/linkManagementTool";
 import { analyticsSimulationTool } from "./tools/analyticsSimulationTool";
 import { alertsTool } from "./tools/alertsTool";
 import { telegramChatbotWorkflow } from "./workflows/telegramChatbotWorkflow";
+import { registerTelegramTrigger, TriggerInfoTelegramOnNewMessage } from "../triggers/telegramTriggers";
 
 class ProductionPinoLogger extends MastraLogger {
   protected logger: pino.Logger;
@@ -139,6 +140,48 @@ export const mastra = new Mastra({
         // 3. Establishing a publish-subscribe system for real-time monitoring
         //    through the workflow:${workflowId}:${runId} channel
       },
+      // Telegram trigger registration for AffiliateOS bot
+      ...registerTelegramTrigger({
+        triggerType: "telegram/message",
+        handler: async (mastra: Mastra, triggerInfo: TriggerInfoTelegramOnNewMessage) => {
+          const logger = mastra.getLogger();
+          logger?.info("📱 [Telegram Trigger] Message received", { triggerInfo });
+
+          // React to all messages that are going to be replied to
+          const chatId = triggerInfo.payload?.message?.chat?.id;
+          const messageId = triggerInfo.payload?.message?.message_id;
+          
+          if (chatId && messageId) {
+            try {
+              // React with hourglass emoji to show processing
+              await fetch(
+                `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendChatAction`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: chatId,
+                    action: "typing",
+                  }),
+                }
+              );
+            } catch (error) {
+              logger?.error("📱 [Telegram Trigger] Error setting typing action", { error });
+            }
+          }
+
+          // Call the Telegram chatbot workflow
+          const run = await mastra.getWorkflow("telegramChatbotWorkflow").createRunAsync();
+          return await run.start({
+            inputData: {
+              message: triggerInfo.params.message || "",
+              threadId: `telegram/${chatId}`,
+              chatId: chatId?.toString() || "",
+              messageId: messageId?.toString() || "",
+            }
+          });
+        },
+      }),
       // Custom API route for AffiliateOS agent using legacy generate handler
       {
         path: "/api/agents/affiliateOSAgent/generate",
